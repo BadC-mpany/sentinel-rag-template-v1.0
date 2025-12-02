@@ -93,7 +93,23 @@ def bootstrap(config_path: Path | None = None) -> dict:
 
 
 def setup_logging(level: str = "INFO"):
+    """Setup logging for the Agent service."""
+    # Create logs directory in project root
+    # Path: agent/src/bootstrap.py -> src -> agent -> project_root
+    project_root = Path(__file__).parent.parent.parent
+    logs_dir = project_root / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    
+    log_file = logs_dir / "agent.log"
     log_format = os.environ.get("LOG_FORMAT", "text")
+    
+    # File handler for agent.log
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setLevel(getattr(logging, level.upper()))
+    
+    # Console handler (still output to console)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(getattr(logging, level.upper()))
     
     if log_format == "json":
         import json
@@ -110,17 +126,22 @@ def setup_logging(level: str = "INFO"):
                     log_data["exception"] = self.formatException(record.exc_info)
                 return json.dumps(log_data)
         
-        handler = logging.StreamHandler()
-        handler.setFormatter(JsonFormatter())
+        formatter = JsonFormatter()
     else:
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
     
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, level.upper()))
-    root_logger.addHandler(handler)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
     
+    # Reduce noise from third-party libraries
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("opentelemetry").setLevel(logging.WARNING)
+    
+    logger.info("Logging configured: file=%s, level=%s", log_file, level)
 

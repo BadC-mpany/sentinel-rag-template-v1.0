@@ -99,11 +99,57 @@ app = FastAPI(
 
 
 def setup_logging():
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+    """Setup logging for MCP server."""
+    # Create logs directory in project root
+    # Path: mcp/src/server.py -> src -> mcp -> project_root
+    project_root = Path(__file__).parent.parent.parent
+    logs_dir = project_root / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    
+    log_file = logs_dir / "mcp.log"
+    log_level = os.environ.get("LOG_LEVEL", "INFO")
+    log_format = os.environ.get("LOG_FORMAT", "text")
+    
+    # File handler for mcp.log
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setLevel(getattr(logging, log_level.upper()))
+    
+    # Console handler (still output to console)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(getattr(logging, log_level.upper()))
+    
+    if log_format == "json":
+        import json
+        
+        class JsonFormatter(logging.Formatter):
+            def format(self, record: logging.LogRecord) -> str:
+                log_data = {
+                    "timestamp": self.formatTime(record),
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "message": record.getMessage(),
+                }
+                if record.exc_info:
+                    log_data["exception"] = self.formatException(record.exc_info)
+                return json.dumps(log_data)
+        
+        formatter = JsonFormatter()
+    else:
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(handler)
+    root_logger.setLevel(getattr(logging, log_level.upper()))
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    # Reduce noise from third-party libraries
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    
+    logger.info("MCP logging configured: file=%s, level=%s", log_file, log_level)
 
 
 @app.get("/health", response_model=HealthResponse)
