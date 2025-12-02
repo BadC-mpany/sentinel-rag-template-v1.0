@@ -1,0 +1,110 @@
+# OpenTelemetry Configuration
+# ===========================
+#
+# This configuration is for the OpenTelemetry Collector when running
+# in a full observability stack. For basic setup, environment variables
+# in the application handle direct OTLP export.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+  
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 1000
+    spike_limit_mib: 200
+  
+  # Add service name if not present
+  resource:
+    attributes:
+      - key: service.namespace
+        value: sentinel-rag
+        action: upsert
+  
+  # Filter out health check spans to reduce noise
+  filter:
+    spans:
+      exclude:
+        match_type: strict
+        attributes:
+          - key: http.target
+            value: /health
+
+exporters:
+  # Console exporter for debugging
+  debug:
+    verbosity: detailed
+  
+  # OTLP exporter for production (configure your backend)
+  otlp/jaeger:
+    endpoint: "jaeger:4317"
+    tls:
+      insecure: true
+  
+  # Prometheus metrics exporter
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: sentinel_rag
+    const_labels:
+      service: sentinel-rag-agent
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+  
+  zpages:
+    endpoint: "0.0.0.0:55679"
+
+service:
+  extensions:
+    - health_check
+    - zpages
+  
+  pipelines:
+    traces:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+        - batch
+        - resource
+        - filter
+      exporters:
+        - debug
+        - otlp/jaeger
+    
+    metrics:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+        - batch
+        - resource
+      exporters:
+        - prometheus
+    
+    logs:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+        - batch
+        - resource
+      exporters:
+        - debug
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: "0.0.0.0:8888"
+
