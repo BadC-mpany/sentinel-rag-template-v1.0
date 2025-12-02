@@ -137,15 +137,38 @@ async def receive_tool_result(request: ToolResultRequest) -> dict:
     MCP sends results directly to this endpoint.
     """
     result_key = f"{request.session_id}:{request.tool_name}"
+    logger.info("=" * 60)
+    logger.info("Received tool result from MCP:")
+    logger.info("  Session: %s", request.session_id)
+    logger.info("  Tool: %s", request.tool_name)
+    logger.info("  Result Key: %s", result_key)
+    logger.info("  Success: %s", request.success)
+    logger.info("  Result: %s", str(request.result)[:200] if request.result else None)
+    logger.info("  Error: %s", request.error)
+    logger.info("=" * 60)
+    
     _pending_tool_results[result_key] = {
         "success": request.success,
         "result": request.result,
         "error": request.error,
     }
-    logger.info("Received tool result: session=%s, tool=%s, success=%s, result=%s", 
-                request.session_id, request.tool_name, request.success, 
-                str(request.result)[:100] if request.result else None)
+    
+    logger.info("Stored result in pending_results. Total pending: %d", len(_pending_tool_results))
     return {"status": "received", "result_key": result_key}
+
+
+@app.get("/debug/pending-results")
+async def debug_pending_results() -> dict:
+    """Debug endpoint to inspect pending tool results."""
+    return {
+        "pending_count": len(_pending_tool_results),
+        "pending_keys": list(_pending_tool_results.keys()),
+        "pending_data": {k: {
+            "success": v.get("success"),
+            "has_result": v.get("result") is not None,
+            "has_error": v.get("error") is not None,
+        } for k, v in _pending_tool_results.items()}
+    }
 
 
 @app.get("/debug/tools")

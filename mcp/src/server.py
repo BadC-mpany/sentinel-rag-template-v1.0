@@ -315,14 +315,24 @@ async def _send_result_to_agent(
         "error": error,
     }
     
-    logger.info("Sending result to Agent: url=%s, tool=%s, session=%s, success=%s", 
-                agent_url, tool_name, session_id, success)
+    result_key = f"{session_id}:{tool_name}"
+    logger.info("=" * 60)
+    logger.info("Sending result to Agent:")
+    logger.info("  URL: %s", agent_url)
+    logger.info("  Tool: %s", tool_name)
+    logger.info("  Session: %s", session_id)
+    logger.info("  Result Key: %s", result_key)
+    logger.info("  Success: %s", success)
+    logger.info("  Result: %s", str(result)[:200] if result else None)
+    logger.info("=" * 60)
     
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(agent_url, json=payload)
             response.raise_for_status()
-            logger.info("Result sent successfully to Agent: tool=%s, session=%s", tool_name, session_id)
+            response_data = response.json()
+            logger.info("Result sent successfully to Agent: status=%d, response=%s", 
+                       response.status_code, response_data)
     except httpx.HTTPStatusError as e:
         logger.error("HTTP error sending result to Agent: status=%d, response=%s", 
                      e.response.status_code, e.response.text)
@@ -333,29 +343,20 @@ async def _send_result_to_agent(
 async def _execute_tool(tool_name: str, args: dict[str, Any]) -> Any:
     """Execute the requested tool."""
     
-    if tool_name == "file_read":
-        return await _file_read(args)
-    elif tool_name == "file_write":
-        return await _file_write(args)
-    elif tool_name == "file_search":
-        return await _file_search(args)
+    if tool_name == "read_file":
+        return await _read_file(args)
     elif tool_name == "web_search":
         return await _web_search(args)
-    elif tool_name == "vector_query":
-        return await _vector_query(args)
-    elif tool_name == "document_summarize":
-        return await _document_summarize(args)
     else:
         raise ValueError(f"Unknown tool: {tool_name}")
 
 
-async def _file_read(args: dict[str, Any]) -> dict:
-    """Read a file from the data store."""
-    file_path = args.get("file_path", "")
-    encoding = args.get("encoding", "utf-8")
+async def _read_file(args: dict[str, Any]) -> dict:
+    """Reads content from a file at the specified path."""
+    file_path = args.get("path", "")
     
     if not file_path:
-        raise ValueError("file_path is required")
+        raise ValueError("path is required")
     
     full_path = DATA_ROOT / file_path
     
@@ -365,69 +366,21 @@ async def _file_read(args: dict[str, Any]) -> dict:
     if not str(full_path.resolve()).startswith(str(DATA_ROOT.resolve())):
         raise PermissionError("Access denied: path traversal detected")
     
-    content = full_path.read_text(encoding=encoding)
+    content = full_path.read_text(encoding="utf-8")
     
     return {
-        "file_path": file_path,
+        "path": file_path,
         "content": content,
         "size": len(content),
     }
 
 
-async def _file_write(args: dict[str, Any]) -> dict:
-    """Write content to a file in the data store."""
-    file_path = args.get("file_path", "")
-    content = args.get("content", "")
-    encoding = args.get("encoding", "utf-8")
-    
-    if not file_path:
-        raise ValueError("file_path is required")
-    
-    full_path = DATA_ROOT / file_path
-    
-    if not str(full_path.resolve()).startswith(str(DATA_ROOT.resolve())):
-        raise PermissionError("Access denied: path traversal detected")
-    
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_text(content, encoding=encoding)
-    
-    return {
-        "file_path": file_path,
-        "bytes_written": len(content.encode(encoding)),
-        "success": True,
-    }
-
-
-async def _file_search(args: dict[str, Any]) -> dict:
-    """Search for files in the data store."""
-    query = args.get("query", "")
-    directory = args.get("directory", "public")
-    max_results = args.get("max_results", 10)
-    
-    search_dir = DATA_ROOT / directory
-    
-    if not search_dir.exists():
-        return {"matches": [], "total": 0}
-    
-    matches = []
-    for path in search_dir.rglob("*"):
-        if path.is_file() and query.lower() in path.name.lower():
-            matches.append(str(path.relative_to(DATA_ROOT)))
-            if len(matches) >= max_results:
-                break
-    
-    return {
-        "query": query,
-        "directory": directory,
-        "matches": matches,
-        "total": len(matches),
-    }
-
-
 async def _web_search(args: dict[str, Any]) -> dict:
-    """Simulate web search (placeholder implementation)."""
+    """Searches the web for information using a search query."""
     query = args.get("query", "")
-    max_results = args.get("max_results", 5)
+    
+    if not query:
+        raise ValueError("query is required")
     
     # Placeholder: In production, integrate with actual search API
     return {
@@ -440,35 +393,6 @@ async def _web_search(args: dict[str, Any]) -> dict:
             }
         ],
         "total": 1,
-    }
-
-
-async def _vector_query(args: dict[str, Any]) -> dict:
-    """Simulate vector query (placeholder implementation)."""
-    query = args.get("query", "")
-    collection = args.get("collection", "default")
-    top_k = args.get("top_k", 5)
-    
-    # Placeholder: In production, integrate with vector database
-    return {
-        "query": query,
-        "collection": collection,
-        "results": [],
-        "total": 0,
-        "message": "Vector database not configured. This is a placeholder response.",
-    }
-
-
-async def _document_summarize(args: dict[str, Any]) -> dict:
-    """Simulate document summarization (placeholder implementation)."""
-    document_id = args.get("document_id", "")
-    max_length = args.get("max_length", 500)
-    
-    # Placeholder: In production, integrate with summarization service
-    return {
-        "document_id": document_id,
-        "summary": f"Summary placeholder for document {document_id}. In production, this would return an actual summary.",
-        "max_length": max_length,
     }
 
 

@@ -2,142 +2,34 @@ version: "1.0"
 service_name: "sentinel-rag-agent"
 
 tools:
-  - name: "file_read"
-    description: "Read contents of a file from the secure data store"
+  - name: "read_file"
+    description: "Reads content from a file at the specified path."
     parameters:
-      - name: "file_path"
+      - name: "path"
         type: "string"
         required: true
-        description: "Path to the file relative to data root"
-      - name: "encoding"
-        type: "string"
-        required: false
-        default: "utf-8"
-        description: "File encoding"
+        description: "The file path to read from"
     taint_rules:
-      - rule_id: "file_read_confidential"
-        condition: "file_path.startswith('confidential/')"
+      - rule_id: "read_file_confidential"
+        condition: "path.startswith('confidential/')"
         taint_level: "HIGH"
         requires_approval: true
-      - rule_id: "file_read_public"
-        condition: "file_path.startswith('public/')"
-        taint_level: "LOW"
-        requires_approval: false
-
-  - name: "file_write"
-    description: "Write contents to a file in the secure data store"
-    parameters:
-      - name: "file_path"
-        type: "string"
-        required: true
-        description: "Path to the file relative to data root"
-      - name: "content"
-        type: "string"
-        required: true
-        description: "Content to write to the file"
-      - name: "encoding"
-        type: "string"
-        required: false
-        default: "utf-8"
-        description: "File encoding"
-    taint_rules:
-      - rule_id: "file_write_confidential"
-        condition: "file_path.startswith('confidential/')"
-        taint_level: "HIGH"
-        requires_approval: true
-      - rule_id: "file_write_public"
-        condition: "file_path.startswith('public/')"
-        taint_level: "MEDIUM"
-        requires_approval: false
-
-  - name: "file_search"
-    description: "Search for files matching a pattern in the secure data store"
-    parameters:
-      - name: "query"
-        type: "string"
-        required: true
-        description: "Search query or pattern"
-      - name: "directory"
-        type: "string"
-        required: false
-        default: "public"
-        description: "Directory to search in (public or confidential)"
-      - name: "max_results"
-        type: "integer"
-        required: false
-        default: 10
-        description: "Maximum number of results to return"
-    taint_rules:
-      - rule_id: "search_confidential"
-        condition: "directory == 'confidential'"
-        taint_level: "HIGH"
-        requires_approval: true
-      - rule_id: "search_public"
-        condition: "directory == 'public'"
+      - rule_id: "read_file_public"
+        condition: "path.startswith('public/')"
         taint_level: "LOW"
         requires_approval: false
 
   - name: "web_search"
-    description: "Search the web for information"
+    description: "Searches the web for information using a search query."
     parameters:
       - name: "query"
         type: "string"
         required: true
-        description: "Search query"
-      - name: "context"
-        type: "string"
-        required: false
-        description: "Additional context for the search"
-      - name: "max_results"
-        type: "integer"
-        required: false
-        default: 5
-        description: "Maximum number of results to return"
+        description: "The search query string"
     taint_rules:
       - rule_id: "web_search_default"
         condition: "true"
         taint_level: "LOW"
-        requires_approval: false
-
-  - name: "vector_query"
-    description: "Query the vector database for semantic search"
-    parameters:
-      - name: "query"
-        type: "string"
-        required: true
-        description: "Natural language query for semantic search"
-      - name: "collection"
-        type: "string"
-        required: false
-        default: "default"
-        description: "Vector collection to query"
-      - name: "top_k"
-        type: "integer"
-        required: false
-        default: 5
-        description: "Number of results to return"
-    taint_rules:
-      - rule_id: "vector_query_default"
-        condition: "true"
-        taint_level: "MEDIUM"
-        requires_approval: false
-
-  - name: "document_summarize"
-    description: "Request a summary of a document"
-    parameters:
-      - name: "document_id"
-        type: "string"
-        required: true
-        description: "ID of the document to summarize"
-      - name: "max_length"
-        type: "integer"
-        required: false
-        default: 500
-        description: "Maximum length of summary in words"
-    taint_rules:
-      - rule_id: "summarize_default"
-        condition: "true"
-        taint_level: "MEDIUM"
         requires_approval: false
 
 data_classification:
@@ -171,4 +63,3 @@ rate_limiting:
   enabled: true
   requests_per_minute: 60
   burst_limit: 10
-

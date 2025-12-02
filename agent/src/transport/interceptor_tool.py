@@ -122,20 +122,52 @@ class SentinelSecureTool(BaseTool):
                 max_wait = self.timeout_seconds
                 start_time = time.time()
                 
-                logger.info("Waiting for tool result: key=%s, timeout=%s", result_key, max_wait)
+                logger.info("=" * 60)
+                logger.info("Waiting for tool result:")
+                logger.info("  Result Key: %s", result_key)
+                logger.info("  Session ID: %s", self._session_id)
+                logger.info("  Tool Name: %s", self.name)
+                logger.info("  Timeout: %s seconds", max_wait)
+                logger.info("  Pending results store: %s", "initialized" if _pending_results is not None else "NOT INITIALIZED")
+                if _pending_results:
+                    logger.info("  Current pending keys: %s", list(_pending_results.keys())[:10])
+                logger.info("=" * 60)
                 
                 while time.time() - start_time < max_wait:
-                    if _pending_results and result_key in _pending_results:
+                    if _pending_results is None:
+                        logger.error("Pending results store is None!")
+                        time.sleep(0.1)
+                        continue
+                    
+                    if result_key in _pending_results:
                         result_data = _pending_results.pop(result_key)
-                        logger.info("Received tool result: key=%s, success=%s", result_key, result_data["success"])
+                        logger.info("=" * 60)
+                        logger.info("Received tool result:")
+                        logger.info("  Key: %s", result_key)
+                        logger.info("  Success: %s", result_data["success"])
+                        logger.info("  Result: %s", str(result_data.get("result", ""))[:200])
+                        logger.info("=" * 60)
                         if result_data["success"]:
                             return str(result_data["result"])
                         else:
                             return f"Error: {result_data.get('error', 'Unknown error')}"
+                    
+                    # Log available keys periodically
+                    elapsed = time.time() - start_time
+                    if int(elapsed) % 5 == 0 and elapsed > 0:
+                        logger.debug("Still waiting... elapsed=%.1fs, available keys: %s", 
+                                    elapsed, list(_pending_results.keys())[:5] if _pending_results else [])
+                    
                     time.sleep(0.1)
                 
-                logger.warning("Timeout waiting for tool result: key=%s", result_key)
-                return "Error: Timeout waiting for tool result from MCP"
+                logger.warning("=" * 60)
+                logger.warning("TIMEOUT waiting for tool result:")
+                logger.warning("  Key: %s", result_key)
+                logger.warning("  Waited: %.1f seconds", max_wait)
+                if _pending_results:
+                    logger.warning("  Available keys: %s", list(_pending_results.keys()))
+                logger.warning("=" * 60)
+                return f"Error: Timeout waiting for tool result from MCP (key: {result_key})"
 
             except httpx.HTTPStatusError as e:
                 try:
