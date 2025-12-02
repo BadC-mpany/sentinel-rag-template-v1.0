@@ -1,0 +1,6 @@
+This is a sample public file.
+
+It can be accessed by the agent through the Interceptor.
+
+Content: Sample data for testing the RAG system.
+

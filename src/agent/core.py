@@ -10,7 +10,7 @@ import os
 import uuid
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from opentelemetry import trace
@@ -119,6 +119,10 @@ class SentinelAgent:
             max_tokens=config.max_tokens,
             openai_api_key=api_key,
             openai_api_base=config.openrouter_base_url,
+            default_headers={
+                "HTTP-Referer": os.getenv("OPENROUTER_REFERER", "https://github.com/sentinel-rag"),
+                "X-Title": "Sentinel RAG Agent",
+            },
         )
         
         self._agent: Any = None
@@ -141,16 +145,18 @@ class SentinelAgent:
             session_id,
         )
         
-        # Get system prompt with session context
-        system_prompt = get_system_prompt_with_context(session_id)
+        logger.info("Created %d tools for session %s: %s", 
+                   len(self._tools), 
+                   session_id,
+                   [t.name for t in self._tools])
         
         # Create react agent using LangGraph
         agent = create_react_agent(
             model=self._llm,
             tools=self._tools,
-            state_modifier=system_prompt,
         )
         
+        logger.debug("Agent created successfully for session %s", session_id)
         return agent
     
     async def invoke(
@@ -194,6 +200,10 @@ class SentinelAgent:
             # Build messages list
             messages: list[Any] = []
             
+            # Add system prompt first
+            system_prompt = get_system_prompt_with_context(session_id)
+            messages.append(SystemMessage(content=system_prompt))
+            
             if conversation_history:
                 for hist_msg in conversation_history:
                     if hist_msg.role == "user":
@@ -213,26 +223,77 @@ class SentinelAgent:
             
             try:
                 # Invoke the agent
+                logger.debug("Invoking agent with %d messages", len(messages))
+                
+                # LangGraph agents return state dict with messages
                 result = await self._agent.ainvoke(
                     {"messages": messages},
                     config={"callbacks": callbacks},
                 )
                 
-                # Extract response
+                logger.debug("Agent result type: %s", type(result))
+                logger.debug("Agent result keys: %s", result.keys() if isinstance(result, dict) else "N/A")
+                
+                # Extract response - result is a state dict
+                if not isinstance(result, dict):
+                    raise ValueError(f"Expected dict result, got {type(result)}")
+                
                 response_messages = result.get("messages", [])
+                logger.debug("Response messages count: %d", len(response_messages))
+                
                 final_message = ""
                 tool_calls: list[dict[str, Any]] = []
                 
-                for msg in response_messages:
-                    if isinstance(msg, AIMessage):
-                        if msg.content:
-                            final_message = msg.content
-                        if hasattr(msg, "tool_calls") and msg.tool_calls:
-                            for tc in msg.tool_calls:
-                                tool_calls.append({
-                                    "name": tc.get("name"),
-                                    "args": tc.get("args"),
-                                })
+                if not response_messages:
+                    logger.warning("No messages in agent result, result: %s", result)
+                    final_message = "No response generated"
+                else:
+                    # Log all message types for debugging
+                    for i, msg in enumerate(response_messages):
+                        logger.debug("Message %d: type=%s, content=%s", i, type(msg).__name__, str(msg)[:200])
+                    
+                    # Collect all AIMessages and their tool calls
+                    ai_messages = [msg for msg in response_messages if isinstance(msg, AIMessage)]
+                    tool_messages = [msg for msg in response_messages if isinstance(msg, ToolMessage)]
+                    
+                    logger.debug("Found %d AIMessages, %d ToolMessages", len(ai_messages), len(tool_messages))
+                    
+                    # Get the last AIMessage (final response)
+                    last_ai_message = None
+                    if ai_messages:
+                        last_ai_message = ai_messages[-1]
+                    
+                    if last_ai_message:
+                        # Extract content
+                        if last_ai_message.content:
+                            final_message = str(last_ai_message.content)
+                        
+                        # Extract tool calls from all AIMessages (not just the last one)
+                        for ai_msg in ai_messages:
+                            if hasattr(ai_msg, "tool_calls") and ai_msg.tool_calls:
+                                logger.debug("Found %d tool calls in AIMessage", len(ai_msg.tool_calls))
+                                for tc in ai_msg.tool_calls:
+                                    if isinstance(tc, dict):
+                                        tool_calls.append({
+                                            "name": tc.get("name", "unknown"),
+                                            "args": tc.get("args", {}),
+                                        })
+                                    else:
+                                        tool_calls.append({
+                                            "name": getattr(tc, "name", "unknown"),
+                                            "args": getattr(tc, "args", {}),
+                                        })
+                        
+                        # If we have tool calls but no final message, the agent is still processing
+                        if tool_calls and not final_message:
+                            final_message = "Processing tool calls..."
+                    else:
+                        logger.warning("No AIMessage found in response")
+                        # Fallback: try to get any text content
+                        for msg in reversed(response_messages):
+                            if hasattr(msg, "content") and msg.content:
+                                final_message = str(msg.content)
+                                break
                 
                 logger.info(
                     "Agent completed: session=%s, tool_calls=%d",
@@ -251,6 +312,7 @@ class SentinelAgent:
                     "Agent error: session=%s, error=%s",
                     session_id,
                     str(e),
+                    exc_info=True,
                 )
                 span.record_exception(e)
                 raise
@@ -288,6 +350,11 @@ class SentinelAgent:
         ]
         
         messages: list[Any] = []
+        
+        # Add system prompt first
+        system_prompt = get_system_prompt_with_context(session_id)
+        messages.append(SystemMessage(content=system_prompt))
+        
         if conversation_history:
             for hist_msg in conversation_history:
                 if hist_msg.role == "user":

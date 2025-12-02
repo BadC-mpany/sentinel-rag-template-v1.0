@@ -1,43 +1,21 @@
-# Sentinel RAG Template - Python Dependencies
-# ============================================
-# Python 3.11+ required
+# Sentinel RAG Template - Dependencies
 
-# Core Framework
+# Core
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+httpx>=0.26.0
+pyyaml>=6.0.0
 
-# LangChain & LLM
+# LangChain
 langchain>=0.1.0
 langchain-core>=0.1.0
 langchain-openai>=0.0.5
 langgraph>=0.0.20
 
-# HTTP Client
-httpx>=0.26.0
-
-# Configuration
-pyyaml>=6.0.1
-python-dotenv>=1.0.0
-
-# OpenTelemetry - Tracing & Observability
+# OpenTelemetry
 opentelemetry-api>=1.22.0
 opentelemetry-sdk>=1.22.0
 opentelemetry-exporter-otlp>=1.22.0
 opentelemetry-instrumentation-httpx>=0.43b0
-opentelemetry-instrumentation-fastapi>=0.43b0
-
-# Redis (for session management)
-redis>=5.0.0
-
-# Utilities
-python-multipart>=0.0.6
-
-# Development & Testing
-pytest>=7.4.0
-pytest-asyncio>=0.23.0
-pytest-cov>=4.1.0
-black>=24.0.0
-ruff>=0.1.0
-mypy>=1.8.0
